@@ -1,193 +1,164 @@
-# 🛒 API REST Java - Projet TD 2026
+🛍️ Backend Java – API REST E‑commerce
+Application Spring Boot exposant une API REST pour gérer un mini système de commande en ligne, avec vérification d’adresse via un service externe de géocodage lors de la création de compte.​​
 
-**API REST Spring Boot** pour gérer un système de commandes e-commerce avec validation d'adresse via API externe.
+🧰 Stack technique
+Composant	Version	Rôle
+Java	21 (LTS)	Langage principal de l’API
+Spring Boot	3.5.6	Démarrage rapide, Web, DI
+Spring Data JPA	Hibernate	Accès et mapping aux données
+MySQL	8.0	Base relationnelle principale
+HttpClient	Java 11+	Appels HTTP/2 vers l’API d’adresses
+Swagger / OpenAPI	3.x	Documentation et test des endpoints
+Spring Security	-	Authentification HTTP Basic
+​​
 
----
+🧱 Modèle métier (JPA)
+Schéma logique des relations entre entités :​​
 
-## 📋 Technologies
-
-| Technologie | Version | Usage |
-|------------|---------|-------|
-| **Java** | 21 (LTS) | Langage principal |
-| **Spring Boot** | 3.5.6 | Framework web & DI |
-| **Spring Data JPA** | (Hibernate) | ORM & persistence |
-| **MySQL** | 8.0 | Base de données |
-| **HttpClient** | Java 11+ | Appels HTTP/2 |
-| **Swagger/OpenAPI** | 3.x | Documentation API |
-| **Spring Security** | - | Authentification HTTP Basic |
-
----
-
-## 🗄️ Modèle de données (Relations JPA)
-
-```
+text
 ┌─────────┐      ┌─────────┐      ┌────────┐      ┌───────────────┐      ┌─────────┐
 │ Address │ 1──1 │ Account │ 1──N │ Orders │ 1──N │ OrdersDetails │ N──1 │ Product │
 └─────────┘      └────┬────┘      └────────┘      └───────────────┘      └────┬────┘
                       │                                                         │
                       └───────────────────── 1──N Notice N──1 ─────────────────┘
-```
+Entités principales
+Address : street, city, postalCode, country​​
 
-### Entités
+Account : username, password, email, firstName, lastName​​
 
-- **Address** : `street`, `city`, `postalCode`, `country`
-- **Account** : `username`, `password`, `email`, `firstName`, `lastName`
-- **Product** : `name`, `description`, `price`, `stockQuantity`
-- **Orders** : `orderDate`, `totalAmount`, `status`
-- **OrdersDetails** : `quantity`, `unitPrice`, `subtotal`
-- **Notice** : `rating` (1-5), `comment`, `createdAt`
+Product : name, description, price, stockQuantity​​
 
----
+Orders : orderDate, totalAmount, status​​
 
-## ✅ Validation d'adresse (TD Principal)
+OrdersDetails : quantity, unitPrice, subtotal​​
 
-### Objectif
+Notice : rating (1–5), comment, createdAt​​
 
-Valider automatiquement les adresses lors de la création d'un compte en utilisant une **API de géocodage externe**.
+🎯 Validation d’adresse (fonctionnalité clé)
+But fonctionnel
+Lorsqu’un nouvel utilisateur crée un compte, son adresse est automatiquement contrôlée auprès d’une API de géocodage afin de refuser les adresses douteuses ou inexistantes.​​
 
-### API de géocodage
+Fournisseurs d’adresses
+API RIOC (labo) : https://api-gouv.lab.rioc.fr/search (cible par défaut)​​
 
-- **API du labo RIOC** : `https://api-gouv.lab.rioc.fr/search` *(utilisée par défaut)*
-- **API publique** : `https://api-adresse.data.gouv.fr/search` *(alternative)*
-- **Documentation** : https://adresse.data.gouv.fr/api-doc/adresse
+API publique : https://api-adresse.data.gouv.fr/search (fallback possible)​​
 
-### Implémentation technique
+Référence : documentation officielle de l’API Adresse Data Gouv.​​
 
-**Service** : `AddressValidationService`
+Implémentation
+Service dédié : AddressValidationService.​​
 
-1. **HttpClient Java natif** (HTTP/2)
-   ```java
-   HttpClient httpClient = HttpClient.newBuilder()
-       .version(HttpClient.Version.HTTP_2)
-       .build();
-   ```
-   ⚠️ **Note** : Utilise HttpClient au lieu de RestTemplate car certaines APIs bloquent RestTemplate
+Utilisation de HttpClient natif en HTTP/2 :​​
 
-2. **Streams Java** (requis par le TD)
-   ```java
-   return response.getFeatures().stream()
-       .findFirst()
-       .map(feature -> feature.getProperties().getScore())
-       .filter(score -> score != null && score > 0.5)
-       .isPresent();
-   ```
-   - Utilise `.stream()`, `.findFirst()`, `.map()`, `.filter()`, `.isPresent()`
-   - Documentation : https://www.baeldung.com/java-streams
+java
+HttpClient httpClient = HttpClient.newBuilder()
+    .version(HttpClient.Version.HTTP_2)
+    .build();
+Ce choix évite certains blocages rencontrés avec RestTemplate sur des APIs externes.​​
 
-3. **Score de confiance** : Seuil minimal de **0.5** pour valider une adresse
+Exploitation des Streams Java pour analyser la réponse :​​
 
-### Fonctionnement
+java
+return response.getFeatures().stream()
+    .findFirst()
+    .map(feature -> feature.getProperties().getScore())
+    .filter(score -> score != null && score > 0.5)
+    .isPresent();
+Le flux permet de ne garder que le premier résultat suffisamment fiable selon le score fourni.​​
 
-```
+Seuil de confiance : une adresse est considérée comme valide si le score retourné est strictement supérieur à 0.5.​​
+
+Vue d’ensemble du flux```
 Client → POST /api/accounts → AccountService
-    ↓
+↓
 AddressValidationService.validateAddress(address)
-    ↓
-Construit requête: "8 Boulevard du Port 80000 Amiens"
-    ↓
+↓
+Concaténation de l’adresse ("8 Boulevard du Port 80000 Amiens")
+↓
 HttpClient → GET https://api-gouv.lab.rioc.fr/search?q=...&limit=1
-    ↓
+↓
 Réponse JSON : {"features": [{"properties": {"score": 0.97}}]}
-    ↓
+↓
 Stream: .findFirst().map().filter(score > 0.5)
-    ↓
-✅ Adresse valide → Création compte
-❌ Adresse invalide → HTTP 400 "L'adresse fournie n'est pas valide"
-```
+↓
+✅ Score OK → création du compte
+❌ Score insuffisant → HTTP 400 avec message d’erreur
 
----
+text
 
-## 🚀 Démarrage
+***
 
-### Prérequis
+## 🚀 Mise en route du projet
 
-- Java 21+
-- Docker & Docker Compose
-- Maven (wrapper inclus)
+### Pré-requis
 
-### 1. Démarrer MySQL
+- Java 21 ou plus[8][1]
+- Docker + Docker Compose pour la base MySQL[9][1]
+- Maven (wrapper fourni : `./mvnw`)[8][1]
+
+### 1. Lancement de MySQL
 
 ```bash
 cd database
 docker compose up -d
-```
-
-### 2. Lancer l'application
-
-```bash
+2. Démarrer l’API
+bash
 ./mvnw spring-boot:run
-# OU
+# ou
 ./restart.sh
-```
+3. Accéder aux interfaces
+API REST : http://localhost:8080​​
 
-### 3. Accéder à l'application
+Swagger UI : http://localhost:8080/swagger-ui.html​​
 
-- **API** : http://localhost:8080
-- **Swagger UI** : http://localhost:8080/swagger-ui.html
-- **OpenAPI JSON** : http://localhost:8080/v3/api-docs
+Spécification OpenAPI : http://localhost:8080/v3/api-docs​​
 
----
+🔐 Sécurité – HTTP Basic
+Utilisateur	Mot de passe	Rôles	Droits
+user	userpassword	USER	lecture sur /api/products, /api/orders, /api/notices
+admin	adminpassword	ADMIN + USER	accès à l’ensemble des routes, y compris /api/accounts
+​​
 
-## 🔐 Authentification HTTP Basic
+Authentification via Swagger UI
+Cliquer sur le bouton Authorize dans Swagger.​​
 
-| Utilisateur | Mot de passe | Rôles | Accès |
-|-------------|--------------|-------|-------|
-| `user` | `userpassword` | USER | `/api/products`, `/api/orders`, `/api/notices` |
-| `admin` | `adminpassword` | ADMIN + USER | **Tous les endpoints** (dont `/api/accounts`) |
+Saisir les identifiants (ex. admin / adminpassword).​​
 
-### Dans Swagger UI
+Valider, fermer la fenêtre : l’icône de cadenas passe en mode authentifié.​​
 
-1. Cliquer sur **Authorize** 🔓 (cadenas en haut à droite)
-2. Entrer : `admin` / `adminpassword`
-3. Cliquer sur **Authorize** puis **Close**
-4. Le cadenas devient 🔒 = authentifié
-
-### En ligne de commande (curl)
-
-```bash
+Exemple avec curl
+bash
 curl -u admin:adminpassword http://localhost:8080/api/accounts
-```
+🌐 Endpoints REST
+Comptes (ADMIN uniquement)
+Méthode	URI	Description
+POST	/api/accounts	Création de compte avec contrôle d’adresse
+GET	/api/accounts	Liste complète des comptes
+GET	/api/accounts/{id}	Détail d’un compte
+PUT	/api/accounts/{id}	Mise à jour d’un compte
+DELETE	/api/accounts/{id}	Suppression d’un compte
+​​
 
----
+Produits (USER / ADMIN)
+Méthode	URI	Description
+GET	/api/products	Récupère tous les produits
+GET	/api/products/{id}	Détail d’un produit
+POST	/api/products	Création d’un produit
+PUT	/api/products/{id}	Modification d’un produit
+DELETE	/api/products/{id}	Suppression d’un produit
+​​
 
-## 📡 Endpoints API
+Commandes & Avis (USER / ADMIN)
+Méthode	URI	Description
+GET	/api/orders	Liste des commandes
+POST	/api/orders	Création d’une nouvelle commande
+GET	/api/notices	Récupère tous les avis
+POST	/api/notices	Ajout d’un avis sur un produit
+​​
 
-### 👤 Accounts (ADMIN uniquement)
-
-| Méthode | Endpoint | Description |
-|---------|----------|-------------|
-| `POST` | `/api/accounts` | Créer un compte **avec validation d'adresse** |
-| `GET` | `/api/accounts` | Liste tous les comptes |
-| `GET` | `/api/accounts/{id}` | Détails d'un compte |
-| `PUT` | `/api/accounts/{id}` | Modifier un compte |
-| `DELETE` | `/api/accounts/{id}` | Supprimer un compte |
-
-### 📦 Products (USER ou ADMIN)
-
-| Méthode | Endpoint | Description |
-|---------|----------|-------------|
-| `GET` | `/api/products` | Liste des produits |
-| `GET` | `/api/products/{id}` | Détails d'un produit |
-| `POST` | `/api/products` | Créer un produit |
-| `PUT` | `/api/products/{id}` | Modifier un produit |
-| `DELETE` | `/api/products/{id}` | Supprimer un produit |
-
-### 🛒 Orders & Notices (USER ou ADMIN)
-
-| Méthode | Endpoint | Description |
-|---------|----------|-------------|
-| `GET` | `/api/orders` | Liste des commandes |
-| `POST` | `/api/orders` | Créer une commande |
-| `GET` | `/api/notices` | Liste des avis |
-| `POST` | `/api/notices` | Créer un avis |
-
----
-
-## 🧪 Tests - Validation d'adresse
-
-### ✅ Test avec adresse VALIDE
-
-```bash
+🧪 Scénarios de test – Adresse
+Cas d’une adresse acceptée
+bash
 curl -X POST http://localhost:8080/api/accounts \
   -u admin:adminpassword \
   -H "Content-Type: application/json" \
@@ -204,29 +175,10 @@ curl -X POST http://localhost:8080/api/accounts \
       "country": "France"
     }
   }'
-```
+Réponse attendue : HTTP 201 Created avec l’objet Account et l’Address persistés.​​
 
-**Réponse attendue** : HTTP 201 Created
-```json
-{
-  "accountId": 1,
-  "username": "jean_dupont",
-  "firstName": "Jean",
-  "lastName": "Dupont",
-  "email": "jean.dupont@example.com",
-  "address": {
-    "addressId": 1,
-    "street": "8 Boulevard du Port",
-    "city": "Amiens",
-    "postalCode": "80000",
-    "country": "France"
-  }
-}
-```
-
-### ❌ Test avec adresse INVALIDE
-
-```bash
+Cas d’une adresse rejetée
+bash
 curl -X POST http://localhost:8080/api/accounts \
   -u admin:adminpassword \
   -H "Content-Type: application/json" \
@@ -243,166 +195,102 @@ curl -X POST http://localhost:8080/api/accounts \
       "country": "France"
     }
   }'
-```
+Réponse attendue : HTTP 400 Bad Request avec un message indiquant que l’adresse ne peut pas être validée.​​
 
-**Réponse attendue** : HTTP 400 Bad Request
-```
-L'adresse fournie n'est pas valide ou n'existe pas
-```
+🗂️ Organisation du code
+Arborescence simplifiée du module src/main/java :​​
 
-### Explication
-
-- ✅ **Score > 0.5** → Adresse validée → HTTP 201 Created
-- ❌ **Score ≤ 0.5** OU **Aucun résultat** → HTTP 400 Bad Request
-
----
-
-## 📁 Structure du projet
-
-```
-src/main/java/com/letocart/java_apirest_2026/
+text
+com/letocart/java_apirest_2026/
 │
 ├── config/
-│   ├── OpenApiConfig.java         # Configuration Swagger/OpenAPI
-│   └── SecurityConfig.java        # HTTP Basic + rôles USER/ADMIN
+│   ├── OpenApiConfig.java           # Paramétrage Swagger/OpenAPI
+│   └── SecurityConfig.java          # Définition des rôles et HTTP Basic
 │
-├── controller/                    # Contrôleurs REST (@RestController)
-│   ├── AccountController.java     # POST, GET, PUT, DELETE /api/accounts
-│   ├── ProductController.java     # CRUD /api/products
-│   ├── OrdersController.java      # Gestion /api/orders
-│   └── NoticeController.java      # Gestion /api/notices
+├── controller/
+│   ├── AccountController.java       # /api/accounts
+│   ├── ProductController.java       # /api/products
+│   ├── OrdersController.java        # /api/orders
+│   └── NoticeController.java        # /api/notices
 │
-├── model/                         # Entités JPA (@Entity)
-│   ├── Account.java               # @OneToOne Address, @OneToMany Orders/Notices
-│   ├── Address.java               # street, city, postalCode, country
-│   ├── Product.java               # name, price, stockQuantity
-│   ├── Orders.java                # @OneToMany OrdersDetails
-│   ├── OrdersDetails.java         # @ManyToOne Orders, Product
-│   └── Notice.java                # rating, comment, @ManyToOne Account/Product
+├── model/
+│   ├── Account.java
+│   ├── Address.java
+│   ├── Product.java
+│   ├── Orders.java
+│   ├── OrdersDetails.java
+│   └── Notice.java
 │
-├── repository/                    # Repositories JPA (Spring Data)
-│   ├── AccountRepository.java     # extends JpaRepository<Account, Long>
+├── repository/
+│   ├── AccountRepository.java
 │   ├── ProductRepository.java
 │   ├── OrdersRepository.java
 │   ├── OrdersDetailsRepository.java
 │   └── NoticeRepository.java
 │
-├── service/                       # Logique métier (@Service)
-│   ├── AccountService.java        # Création compte + validation adresse
-│   ├── AddressValidationService.java  # ⭐ HttpClient + Streams
+├── service/
+│   ├── AccountService.java
+│   ├── AddressValidationService.java
 │   ├── ProductService.java
 │   ├── OrdersService.java
 │   └── NoticeService.java
 │
 ├── dto/
-│   └── AddressValidationResponse.java  # DTO pour JSON API géocodage
+│   └── AddressValidationResponse.java
 │
-└── JavaApirest2026Application.java     # Main Spring Boot
-```
+└── JavaApirest2026Application.java  # Classe main Spring Boot
+⚙️ Configuration principale
+Extrait du application.properties :​​
 
----
-
-## ⚙️ Configuration (`application.properties`)
-
-```properties
-# Base de données MySQL
+text
+# Connexion MySQL
 spring.datasource.url=jdbc:mysql://localhost:3306/java_api_db
 spring.datasource.username=admin
 spring.datasource.password=adminpass
 
-# JPA/Hibernate
+# JPA / Hibernate
 spring.jpa.hibernate.ddl-auto=update
 spring.jpa.show-sql=true
 
-# Swagger
+# OpenAPI / Swagger
 springdoc.api-docs.path=/v3/api-docs
 springdoc.swagger-ui.path=/swagger-ui.html
-```
+✅ Rappel des exigences du TP
+Élément	État	Commentaire
+Mapping JPA complet	✅	Relations Account–Address–Orders–OrdersDetails–Product + Notice
+Intégration d’une API de géocodage	✅	Utilisation de https://api-gouv.lab.rioc.fr/search
+Usage de Streams Java	✅	Chaînage .stream().findFirst().map().filter().isPresent()
+Seuil de validation par score	✅	Vérification score > 0.5 dans AddressValidationService
+Authentification HTTP Basic	✅	Comptes user et admin avec rôles distincts
+Documentation OpenAPI disponible	✅	Swagger UI exposé sur /swagger-ui.html
+Architecture propre par couches	✅	Controllers / Services / Repositories bien isolés
+​​
 
----
-
-## ✅ Checklist des consignes TD
-
-| Consigne | Statut | Détails |
-|----------|--------|---------|
-| Relations JPA correctes | ✅ | Address(1-1)Account(1-N)Orders(1-N)OrdersDetails(N-1)Product + Notice |
-| API de géocodage intégrée | ✅ | `https://api-gouv.lab.rioc.fr/search` |
-| Utilisation des **Streams** | ✅ | `.stream().findFirst().map().filter().isPresent()` |
-| Validation adresse (score > 0.5) | ✅ | Implémenté dans `AddressValidationService` |
-| HTTP Basic Authentication | ✅ | user/admin avec rôles |
-| Documentation OpenAPI | ✅ | Swagger UI accessible |
-| Code propre et lisible | ✅ | Services séparés, nommage clair |
-
----
-
-## 🔧 Commandes utiles
-
-```bash
-# Démarrer MySQL
+🔧 Commandes pratiques
+bash
+# Lancer MySQL via Docker
 cd database && docker compose up -d
 
-# Lancer l'application
+# Démarrer l’API
 ./mvnw spring-boot:run
 
-# Compiler sans lancer
+# Compilation seule
 ./mvnw clean compile
 
-# Arrêter l'application
+# Arrêt (exemple simple)
 pkill -f 'spring-boot:run'
 
-# Voir les logs
+# Logs applicatifs
 tail -f /tmp/app.log
 
-# Tester l'API
+# Ping rapide de l’API comptes
 curl -u admin:adminpassword http://localhost:8080/api/accounts
-```
+📝 Points techniques à retenir
+Modèle de données JPA conçu autour des entités Account, Address, Orders, OrdersDetails, Product, Notice.​​
 
----
+Intégration d’un service externe d’adresses, exploité via HttpClient et des Streams Java pour filtrer les résultats.​​
 
-## 📚 Points clés du TD
+Sécurisation simple par HTTP Basic avec séparation des rôles USER / ADMIN et restrictions sur certains endpoints.​​
 
-### Relations JPA implémentées
-
-| Relation | Type | Détails |
-|----------|------|---------|
-| Account ↔ Address | `@OneToOne` | Un compte a une adresse unique |
-| Account → Orders | `@OneToMany` | Un compte peut avoir plusieurs commandes |
-| Orders → OrdersDetails | `@OneToMany` | Une commande contient plusieurs lignes |
-| OrdersDetails → Product | `@ManyToOne` | Chaque ligne référence un produit |
-| Account → Notice | `@OneToMany` | Un compte peut laisser plusieurs avis |
-| Product → Notice | `@OneToMany` | Un produit peut avoir plusieurs avis |
-
-### Streams Java utilisés
-
-```java
-// Dans AddressValidationService.validateAddress()
-return response.getFeatures().stream()      // Conversion List → Stream
-    .findFirst()                            // Récupère 1er élément (Optional)
-    .map(f -> f.getProperties().getScore()) // Transforme Feature → Score
-    .filter(score -> score > 0.5)           // Garde si score > 0.5
-    .isPresent();                           // Vérifie existence
-```
-
-### Sécurité (HTTP Basic)
-
-- **STATELESS** : Chaque requête doit s'authentifier
-- **Rôles** : USER (lecture), ADMIN (lecture + écriture)
-- **Endpoints protégés** : `/api/accounts` réservé aux ADMIN
-
----
-
-## 🔗 Ressources
-
-- [Spring Boot Documentation](https://spring.io/projects/spring-boot)
-- [Spring Data JPA](https://spring.io/projects/spring-data-jpa)
-- [Java Streams Tutorial](https://www.baeldung.com/java-streams)
-- [API Adresse Data Gouv](https://adresse.data.gouv.fr/api-doc/adresse)
-- [Springdoc OpenAPI](https://springdoc.org/)
-
----
-
-## 👨‍💻 Auteur
-
-**Projet TD 2026** - API REST Java avec validation d'adresse
-
----
+👤 Crédits
+Projet pédagogique API REST Java – validation d’adresse pour travaux dirigés universitaires.
