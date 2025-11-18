@@ -257,7 +257,7 @@ L'adresse fournie n'est pas valide ou n'existe pas
 
 ---
 
-## � Structure du projet
+## 📁 Structure du projet
 
 ```
 src/main/java/com/letocart/java_apirest_2026/
@@ -335,11 +335,6 @@ springdoc.swagger-ui.path=/swagger-ui.html
 
 ---
 
-## 🔧 Commandes utiles
-│   ├── AccountRepository.java
-│   ├── ProductRepository.java
-│   ├── OrdersRepository.java
-│   └── NoticeRepository.java
 ## 🔧 Commandes utiles
 
 ```bash
